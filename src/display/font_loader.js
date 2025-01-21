@@ -160,15 +160,7 @@ class FontLoader {
   }
 
   get isFontLoadingAPISupported() {
-    const hasFonts = !!this._document?.fonts;
-    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
-      return shadow(
-        this,
-        "isFontLoadingAPISupported",
-        hasFonts && !this.styleElement
-      );
-    }
-    return shadow(this, "isFontLoadingAPISupported", hasFonts);
+    return shadow(this, "isFontLoadingAPISupported", false);
   }
 
   get isSyncFontLoadingSupported() {
