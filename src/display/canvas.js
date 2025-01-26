@@ -1796,7 +1796,7 @@ class CanvasGraphics {
   fill(consumePath = true) {
     const ctx = this.ctx;
     const fillColor = this.current.fillColor;
-    const isPatternFill = this.current.patternFill;
+    const isPatternFill = false && this.current.patternFill;
     let needRestore = false;
 
     if (isPatternFill) {
