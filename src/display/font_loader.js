@@ -19,6 +19,7 @@ import {
   shadow,
   string32,
   toBase64Util,
+  unreachable,
   warn,
 } from "../shared/util.js";
 
@@ -79,12 +80,49 @@ class FontLoader {
     }
   }
 
+  async loadSystemFont({ systemFontInfo: info, _inspectFont }) {
+    if (!info || this.#systemFonts.has(info.loadedName)) {
+      return;
+    }
+    assert(
+      !this.disableFontFace,
+      "loadSystemFont shouldn't be called when `disableFontFace` is set."
+    );
+
+    if (this.isFontLoadingAPISupported) {
+      const { loadedName, src, style } = info;
+      const fontFace = new FontFace(loadedName, src, style);
+      this.addNativeFontFace(fontFace);
+      try {
+        await fontFace.load();
+        this.#systemFonts.add(loadedName);
+        _inspectFont?.(info);
+      } catch {
+        warn(
+          `Cannot load system font: ${info.baseFontName}, installing it could help to improve PDF rendering.`
+        );
+
+        this.removeNativeFontFace(fontFace);
+      }
+      return;
+    }
+
+    unreachable(
+      "Not implemented: loadSystemFont without the Font Loading API."
+    );
+  }
+
   async bind(font) {
     // Add the font to the DOM only once; skip if the font is already loaded.
     if (font.attached || (font.missingFile && !font.systemFontInfo)) {
       return;
     }
     font.attached = true;
+
+    if (font.systemFontInfo) {
+      await this.loadSystemFont(font);
+      return;
+    }
 
     if (this.isFontLoadingAPISupported) {
       const nativeFontFace = font.createNativeFontFace();
