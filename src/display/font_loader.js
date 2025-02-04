@@ -19,7 +19,6 @@ import {
   shadow,
   string32,
   toBase64Util,
-  unreachable,
   warn,
 } from "../shared/util.js";
 
@@ -47,6 +46,7 @@ class FontLoader {
   addNativeFontFace(nativeFontFace) {
     this.nativeFontFaces.add(nativeFontFace);
     this._document.fonts.add(nativeFontFace);
+    nativeFontFace.load();
   }
 
   removeNativeFontFace(nativeFontFace) {
@@ -79,49 +79,12 @@ class FontLoader {
     }
   }
 
-  async loadSystemFont({ systemFontInfo: info, _inspectFont }) {
-    if (!info || this.#systemFonts.has(info.loadedName)) {
-      return;
-    }
-    assert(
-      !this.disableFontFace,
-      "loadSystemFont shouldn't be called when `disableFontFace` is set."
-    );
-
-    if (this.isFontLoadingAPISupported) {
-      const { loadedName, src, style } = info;
-      const fontFace = new FontFace(loadedName, src, style);
-      this.addNativeFontFace(fontFace);
-      try {
-        await fontFace.load();
-        this.#systemFonts.add(loadedName);
-        _inspectFont?.(info);
-      } catch {
-        warn(
-          `Cannot load system font: ${info.baseFontName}, installing it could help to improve PDF rendering.`
-        );
-
-        this.removeNativeFontFace(fontFace);
-      }
-      return;
-    }
-
-    unreachable(
-      "Not implemented: loadSystemFont without the Font Loading API."
-    );
-  }
-
   async bind(font) {
     // Add the font to the DOM only once; skip if the font is already loaded.
     if (font.attached || (font.missingFile && !font.systemFontInfo)) {
       return;
     }
     font.attached = true;
-
-    if (font.systemFontInfo) {
-      await this.loadSystemFont(font);
-      return;
-    }
 
     if (this.isFontLoadingAPISupported) {
       const nativeFontFace = font.createNativeFontFace();
@@ -160,7 +123,15 @@ class FontLoader {
   }
 
   get isFontLoadingAPISupported() {
-    return shadow(this, "isFontLoadingAPISupported", false);
+    const hasFonts = !!this._document?.fonts;
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
+      return shadow(
+        this,
+        "isFontLoadingAPISupported",
+        hasFonts && !this.styleElement
+      );
+    }
+    return shadow(this, "isFontLoadingAPISupported", hasFonts);
   }
 
   get isSyncFontLoadingSupported() {
@@ -369,9 +340,14 @@ class FontFaceObject {
     if (!this.data || this.disableFontFace) {
       return null;
     }
+
+    const url =
+      typeof this.data === "string"
+        ? this.data
+        : `url("data:${this.mimetype};base64,${toBase64Util(this.data)}")`;
     let nativeFontFace;
     if (!this.cssFontInfo) {
-      nativeFontFace = new FontFace(this.loadedName, this.data, {});
+      nativeFontFace = new FontFace(this.loadedName, url);
     } else {
       const css = {
         weight: this.cssFontInfo.fontWeight,
@@ -379,11 +355,7 @@ class FontFaceObject {
       if (this.cssFontInfo.italicAngle) {
         css.style = `oblique ${this.cssFontInfo.italicAngle}deg`;
       }
-      nativeFontFace = new FontFace(
-        this.cssFontInfo.fontFamily,
-        this.data,
-        css
-      );
+      nativeFontFace = new FontFace(this.cssFontInfo.fontFamily, url, css);
     }
 
     this._inspectFont?.(this);
